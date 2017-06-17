@@ -1,0 +1,23 @@
+.CodeMirror-lint-mark-fun {
+    padding: 0.25em 0.35em;
+    margin: 0px 0.25em;
+    line-height: 1;
+    display: inline-block;
+    border-radius: 0.25em;
+    border: 1px solid;
+    background: rgba(166, 226, 45, 0.2);
+    border-color: rgb(166, 226, 45);
+}
+
+.CodeMirror-lint-mark-fun::after {
+    box-sizing: border-box;
+    content: "OP";
+    font-size: 0.6em;
+    line-height: 1;
+    padding: 0.35em;
+    border-radius: 0.35em;
+    text-transform: uppercase;
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0px 0px 0.1rem 0.5rem;
+}
