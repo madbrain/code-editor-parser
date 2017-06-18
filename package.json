@@ -9,9 +9,11 @@
   "license": "ISC",
   "devDependencies": {
     "@types/codemirror": "0.0.40",
+    "@types/jasmine": "2.5.52",
     "browser-sync": "2.18.12",
     "gulp": "3.9.1",
     "gulp-clean": "0.3.2",
+    "gulp-jasmine": "2.4.2",
     "gulp-sourcemaps": "2.6.0",
     "gulp-typescript": "3.1.7",
     "gulp-util": "3.0.8",

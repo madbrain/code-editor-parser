@@ -6,16 +6,18 @@ var sourcemaps  = require('gulp-sourcemaps');
 var clean       = require('gulp-clean');
 var bs          = require('browser-sync');
 var runSequence = require('run-sequence');
+var jasmine     = require('gulp-jasmine');
  
 gulp.task('clean', function () {
   return gulp.src(i['dist', 'tmp'], {read: false})
      .pipe(clean());
 });
 
-var tsFiles = 'src/**/*.ts';
+var tsFiles = 'src/**/!(*.spec)+(.ts)';
+var specFiles = 'src/**/*.spec.ts';
 
 gulp.task('tsc-app', function () {
-  compileTs(tsFiles);
+  return compileTs(tsFiles);
 });
 
 gulp.task('watch-ts', function () {
@@ -25,9 +27,20 @@ gulp.task('watch-ts', function () {
   });
 });
 
+gulp.task('tsc-test', function () {
+  return compileTs([tsFiles, specFiles]);
+});
+
+gulp.task('test', function () {
+  return runSequence([ 'tsc-test' ], function() {
+    return gulp.src('tmp/**/*.spec.js')
+      .pipe(jasmine());
+  });
+});
+
 function compileTs(files) {
   var tsProject = ts.createProject('tsconfig.json');
-  var allFiles = [].concat(files, 'typings/**/*.d.ts');
+  var allFiles = [].concat(files, 'index.d.ts');
   var res = gulp.src(allFiles)
      .pipe(sourcemaps.init())
      .pipe(tsProject());

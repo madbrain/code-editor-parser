@@ -10,7 +10,7 @@ export interface Span {
 }
 
 export interface IErrorReporter {
-    (from: Position, to: Position, message: string): void;
+    (span: Span, message: string): void;
 }
 
 enum TokenType {
@@ -32,6 +32,8 @@ export class Lexer {
         throw new Error("not complete");
     }
 }
+
+import * as ast from "./ast";
 
 export class Parser {
     private token: Token;

@@ -11,10 +11,10 @@ export function main() {
         hasGutters: false,
         getAnnotations: function(content: string, options: CodeMirror.LintStateOptions, editor: CodeMirror.Editor) {
             let errors: CodeMirror.Annotation[] = [];
-            let reporter: IErrorReporter = function(from, to, message) {
+            let reporter: IErrorReporter = function(span, message) {
                 errors.push({
-                    from: CodeMirror.Pos(from.line, from.column),
-                    to: CodeMirror.Pos(to.line, to.column),
+                    from: CodeMirror.Pos(span.from.line, span.from.column),
+                    to: CodeMirror.Pos(span.to.line, span.to.column),
                     severity: "error",
                     message: message
                 });
@@ -30,7 +30,7 @@ export function main() {
     };
 
     var myCodeMirror = CodeMirror(document.getElementById("main"), {
-        value: "(desc = 'tutu' OR status IS NULL) AND date > NOW\n",
+        value: "(desc = 'tutu' OR status IS NULL) AND date < NOW\n",
         mode: "custom",
         lint: lintOptions
     });
