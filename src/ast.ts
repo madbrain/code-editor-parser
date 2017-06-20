@@ -40,3 +40,9 @@ export class IsNullMatch implements Query {
 export class BeforeTodayMatch implements Query {
     constructor(public span: Span, public ident: Ident) {}
 }
+
+export interface ErrorNode extends AstNode {}
+
+export class BadMatch implements ErrorNode {
+    constructor(public span: Span, public ident: Ident) {}
+} 

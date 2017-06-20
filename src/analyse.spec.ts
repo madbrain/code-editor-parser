@@ -1,6 +1,7 @@
 
 import {Parser, Lexer, Token, TokenType, Span} from './analyse';
 import {OrQuery, AndQuery, GroupQuery, BeforeTodayMatch, EqualsMatch, IsNullMatch, Ident, StringValue} from "./ast";
+import {BadMatch} from "./ast";
 
 function span(sl: number, sc: number, el: number, ec: number): Span {
     return {from: {line: sl, column: sc}, to: {line: el, column: ec}};
@@ -187,5 +188,28 @@ describe("Parser", function() {
         } catch (e) {
         }
         expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, IS or NULL" }]);
+    });
+});
+
+describe("Parser recovery", function() {
+    it("recover from bad match", function() {
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc 'tutu' AND desc IS NULL";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, IS or NULL" }]);
+        expect(result).toEqual(new AndQuery(span(0, 0, 0, 28), [
+            new BadMatch(span(0, 0, 0, 11),
+                new Ident(span(0, 0, 0, 4), "desc")),
+            new IsNullMatch(span(0, 16, 0, 28),
+                new Ident(span(0, 16, 0, 20), "desc"))
+        ]));
     });
 });
