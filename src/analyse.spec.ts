@@ -1,7 +1,6 @@
 
 import {Parser, Lexer, Token, TokenType, Span} from './analyse';
-import {OrQuery, AndQuery, GroupQuery, BeforeTodayMatch, EqualsMatch, IsNullMatch, Ident, StringValue} from "./ast";
-import {BadMatch} from "./ast";
+import {Ident, StringValue, Builder} from "./ast";
 
 function span(sl: number, sc: number, el: number, ec: number): Span {
     return {from: {line: sl, column: sc}, to: {line: el, column: ec}};
@@ -101,17 +100,17 @@ describe("Parser", function() {
         let content = "(desc = 'tutu' OR status IS NULL) AND date < NOW\n";
         let parser = new Parser(new Lexer(content, reporter), reporter);
         let result = parser.parseQuery();
-        expect(result).toEqual(new AndQuery(span(0, 0, 0, 48), [
-            new GroupQuery(span(0, 0, 0, 33),
-                new OrQuery(span(0, 1, 0, 32), [
-                    new EqualsMatch(span(0, 1, 0, 14),
-                        new Ident(span(0, 1, 0, 5), "desc"),
-                        new StringValue(span(0, 8, 0, 14), "tutu")),
-                    new IsNullMatch(span(0, 18, 0, 32),
-                        new Ident(span(0, 18, 0, 24), "status"))
+        expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 48), [
+            Builder.GroupQuery(span(0, 0, 0, 33),
+                Builder.OrQuery(span(0, 1, 0, 32), [
+                    Builder.EqualsMatch(span(0, 1, 0, 14),
+                        Builder.Ident(span(0, 1, 0, 5), "desc"),
+                        Builder.StringValue(span(0, 8, 0, 14), "tutu")),
+                    Builder.IsNullMatch(span(0, 18, 0, 32),
+                        Builder.Ident(span(0, 18, 0, 24), "status"))
                 ])),
-            new BeforeTodayMatch(span(0, 38, 0, 48),
-                new Ident(span(0, 38, 0, 42), "date"))
+            Builder.BeforeTodayMatch(span(0, 38, 0, 48),
+                Builder.Ident(span(0, 38, 0, 42), "date"))
         ]));
     });
 
@@ -120,14 +119,14 @@ describe("Parser", function() {
         let reporter = (span, message) => {
             errors.push({span: span, message: message});
         }
-        let content = "desc = 'tutu' XX";
+        let content = "desc = 'tutu' )";
         let parser = new Parser(new Lexer(content, reporter), reporter);
         
         try {
             let result = parser.parseQuery();
         } catch (e) {
         }
-        expect(errors).toEqual([{ span: span(0, 14, 0, 16), message: "expecting token EOF" }]);
+        expect(errors).toEqual([{ span: span(0, 14, 0, 15), message: "expecting token EOF" }]);
     });
 
     it("report error at missing end parenthesis", function() {
@@ -187,12 +186,13 @@ describe("Parser", function() {
             let result = parser.parseQuery();
         } catch (e) {
         }
-        expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, IS or NULL" }]);
+        expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, < or IS" }]);
     });
 });
 
 describe("Parser recovery", function() {
     it("recover from bad match", function() {
+        // On missing operator, skip to next token which can follow Unitary and return BadMatch (Panic Mode)
         let errors = [];
         let reporter = (span, message) => {
             errors.push({span: span, message: message});
@@ -204,12 +204,95 @@ describe("Parser recovery", function() {
             result = parser.parseQuery();
         } catch (e) {
         }
-        expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, IS or NULL" }]);
-        expect(result).toEqual(new AndQuery(span(0, 0, 0, 28), [
-            new BadMatch(span(0, 0, 0, 11),
-                new Ident(span(0, 0, 0, 4), "desc")),
-            new IsNullMatch(span(0, 16, 0, 28),
-                new Ident(span(0, 16, 0, 20), "desc"))
+        expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, < or IS" }]);
+        expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 28), [
+            Builder.BadMatch(span(0, 0, 0, 11),
+                Builder.Ident(span(0, 0, 0, 4), "desc")),
+            Builder.IsNullMatch(span(0, 16, 0, 28),
+                Builder.Ident(span(0, 16, 0, 20), "desc"))
         ]));
+    });
+
+    it("recover from bad unitary", function() {
+        // On missing ident, skip to next token which can follow Unitary and return BadUnitary (Panic Mode)
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "= 'tutu'";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 0, 0, 1), message: "expecting token IDENT" }]);
+        expect(result).toEqual(Builder.BadUnitary(span(0, 0, 0, 8)));
+    });
+
+    it("recover from missing AND", function() {
+        // On missing AND and token can start a Unitary, simulate an insert of an AND (Dummy Insert Mode)
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc = 'tutu' desc IS NULL";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 14, 0, 18), message: "expecting token AND" }]);
+        expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 26), [
+            Builder.EqualsMatch(span(0, 0, 0, 13),
+                Builder.Ident(span(0, 0, 0, 4), "desc"),
+                Builder.StringValue(span(0, 7, 0, 13), "tutu")),
+            Builder.IsNullMatch(span(0, 14, 0, 26),
+                Builder.Ident(span(0, 14, 0, 18), "desc"))
+        ]));
+    });
+
+    it("recover from junk at end", function() {
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc = 'tutu')";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 13, 0, 14), message: "expecting token EOF" }]);
+        expect(result).toEqual(
+            Builder.EqualsMatch(span(0, 0, 0, 13),
+                Builder.Ident(span(0, 0, 0, 4), "desc"),
+                Builder.StringValue(span(0, 7, 0, 13), "tutu")));
+    });
+
+    it("recover from missing ending parenthesis", function() {
+        // On missing RPAR, simulate an insert of an RPAR (Dummy Insert Mode),
+        // which will result in any case to a missing EOF (from above) but will return a result
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "(desc = 'tutu' =";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([
+            { span: span(0, 15, 0, 16), message: "expecting token RPAR" },
+            { span: span(0, 15, 0, 16), message: "expecting token EOF" }]);
+        expect(result).toEqual(
+            Builder.GroupQuery(span(0, 0, 0, 14),
+                Builder.EqualsMatch(span(0, 1, 0, 14),
+                    Builder.Ident(span(0, 1, 0, 5), "desc"),
+                    Builder.StringValue(span(0, 8, 0, 14), "tutu"))));
     });
 });
