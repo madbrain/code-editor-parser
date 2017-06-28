@@ -1,11 +1,15 @@
 
 import * as _ from "lodash";
 import {Position, Span} from './analyse';
-import {Query, Ident, BadMatch} from './ast';
+import {Query, Ident, Match, BadOperatorMatch, BadValueMatch} from './ast';
 
 export interface Completion {
     span: Span;
     elements: string[];
+}
+
+function addTrailingSpace(values: string[]) {
+    return values.map(value => value + " ");
 }
 
 interface Action {
@@ -16,7 +20,15 @@ class CompleteName implements Action {
     constructor(public values: string[], public span: Span) {}
 
     public makeCompletion() {
-        return {span: this.span, elements: this.values };
+        return {span: this.span, elements: addTrailingSpace(this.values) };
+    }
+}
+
+class CompleteValue implements Action {
+    constructor(public query: BadValueMatch, public span: Span) {}
+
+    public makeCompletion() {
+        return {span: this.span, elements: addTrailingSpace([ "'my'", "NULL", "'values'" ]) };
     }
 }
 
@@ -34,34 +46,53 @@ export class CompletionProcessor {
             return new CompleteName(this.params, { from: position, to: position})
         } else if (isIn(position, query.span)) {
             if (query.type == "bad-operator-match") {
-                return this.findActionInBadMatch(<BadMatch>query, position);
+                return this.findActionInBadOperatorMatch(<BadOperatorMatch>query, position);
+            } else if (query.type == "match") {
+                return this.findActionInMatch(<Match>query, position);
             } else if (query.type == "bad-match") {
-                return new CompleteName(this.params, { from: position, to: position})
+                return new CompleteName(this.params, { from: position, to: position});
             } else {
                 throw Error("unknown query type: " + query.type);
             }
         } else if (isAfter(position, query.span.to)) {
             if (query.type == "bad-operator-match") {
-                return this.findActionAfterBadMatch(<BadMatch>query, position);
+                return this.findActionAfterBadOperatorMatch(<BadOperatorMatch>query, position);
             } else if (query.type == "bad-match") {
-                return new CompleteName(this.params, { from: position, to: position})
+                return new CompleteName(this.params, { from: position, to: position});
+            } else if (query.type == "bad-value-match") {
+                return new CompleteValue(/*<BadValueMatch>query*/ null, { from: position, to: position});
+            } else if (query.type == "match") {
+                return new CompleteName([ "AND", "OR" ], { from: position, to: position});
             } else {
                 throw Error("unknown query type: " + query.type);
             }
         }
     }
 
-    private findActionInBadMatch(query: BadMatch, position: Position): Action {
+    private findActionInMatch(query: Match, position: Position): Action {
+        let ident = query.ident;
+        let value = query.value;
+        if (isIn(position, ident.span)) {
+            let prefix = this.findPrefix(ident, position);
+            return new CompleteName(this.params.filter(p => p.slice(0, prefix.length) == prefix), ident.span);
+        } else if (isIn(position, value.span)) {
+            return new CompleteValue(null, value.span);
+        } else if (isIn(position, query.operator.span)) {
+            return new CompleteName([ "<", "IS", "=" ], query.operator.span);
+        }
+    }
+
+    private findActionInBadOperatorMatch(query: BadOperatorMatch, position: Position): Action {
         let ident = query.ident;
         if (isIn(position, ident.span)) {
             let prefix = this.findPrefix(ident, position);
             return new CompleteName(this.params.filter(p => p.slice(0, prefix.length) == prefix), ident.span);
         } else if (isAfter(position, ident.span.to)) {
-            throw Error("COMPLETE OPS");
+            return new CompleteName([ "<", "IS", "=" ], {from: position, to:position});
         }
     }
 
-    private findActionAfterBadMatch(query: BadMatch, position: Position): Action {
+    private findActionAfterBadOperatorMatch(query: BadOperatorMatch, position: Position): Action {
         if (_.isEqual(query.ident.span, query.span)) {
             return new CompleteName([ "<", "IS", "=" ], {from: position, to:position});
         } else {
