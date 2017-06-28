@@ -1,10 +1,7 @@
 
 import {Parser, Lexer, Token, TokenType, Span} from './analyse';
-import {Ident, StringValue, Builder} from "./ast";
-
-function span(sl: number, sc: number, el: number, ec: number): Span {
-    return {from: {line: sl, column: sc}, to: {line: el, column: ec}};
-}
+import {Ident, StringValue, Builder, OperatorKind} from "./ast";
+import {span} from './test.utils';
 
 describe("Lexer", function() {
     it("must return correct tokens", function() {
@@ -103,14 +100,19 @@ describe("Parser", function() {
         expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 48), [
             Builder.GroupQuery(span(0, 0, 0, 33),
                 Builder.OrQuery(span(0, 1, 0, 32), [
-                    Builder.EqualsMatch(span(0, 1, 0, 14),
+                    Builder.Match(span(0, 1, 0, 14),
                         Builder.Ident(span(0, 1, 0, 5), "desc"),
+                        Builder.Operator(span(0, 6, 0, 7), OperatorKind.EQUALS),
                         Builder.StringValue(span(0, 8, 0, 14), "tutu")),
-                    Builder.IsNullMatch(span(0, 18, 0, 32),
-                        Builder.Ident(span(0, 18, 0, 24), "status"))
+                    Builder.Match(span(0, 18, 0, 32),
+                        Builder.Ident(span(0, 18, 0, 24), "status"),
+                        Builder.Operator(span(0, 25, 0, 27), OperatorKind.IS),
+                        Builder.NullValue(span(0, 28, 0, 32)))
                 ])),
-            Builder.BeforeTodayMatch(span(0, 38, 0, 48),
-                Builder.Ident(span(0, 38, 0, 42), "date"))
+            Builder.Match(span(0, 38, 0, 48),
+                Builder.Ident(span(0, 38, 0, 42), "date"),
+                Builder.Operator(span(0, 43, 0, 44), OperatorKind.LOWER),
+                Builder.NowValue(span(0, 45, 0, 48)))
         ]));
     });
 
@@ -144,36 +146,6 @@ describe("Parser", function() {
         expect(errors).toEqual([{ span: span(0, 14, 0, 14), message: "expecting token RPAR" }]);
     });
 
-    it("report error on bad date comparison", function() {
-        let errors = [];
-        let reporter = (span, message) => {
-            errors.push({span: span, message: message});
-        }
-        let content = "desc < 'tutu'";
-        let parser = new Parser(new Lexer(content, reporter), reporter);
-        
-        try {
-            let result = parser.parseQuery();
-        } catch (e) {
-        }
-        expect(errors).toEqual([{ span: span(0, 7, 0, 13), message: "expecting token NOW" }]);
-    });
-
-    it("report error on bad null comparison", function() {
-        let errors = [];
-        let reporter = (span, message) => {
-            errors.push({span: span, message: message});
-        }
-        let content = "desc IS 'tutu'";
-        let parser = new Parser(new Lexer(content, reporter), reporter);
-        
-        try {
-            let result = parser.parseQuery();
-        } catch (e) {
-        }
-        expect(errors).toEqual([{ span: span(0, 8, 0, 14), message: "expecting token NULL" }]);
-    });
-
     it("report error on bad match", function() {
         let errors = [];
         let reporter = (span, message) => {
@@ -191,6 +163,25 @@ describe("Parser", function() {
 });
 
 describe("Parser recovery", function() {
+    
+    it("recover from bad match with spaces", function() {
+        // On missing operator, skip to next token which can follow Unitary and return BadMatch (Panic Mode)
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc ";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 5, 0, 5), message: "expecting token =, < or IS" }]);
+        expect(result).toEqual(Builder.BadOperatorMatch(span(0, 0, 0, 4),
+                Builder.Ident(span(0, 0, 0, 4), "desc")));
+    });
+
     it("recover from bad match", function() {
         // On missing operator, skip to next token which can follow Unitary and return BadMatch (Panic Mode)
         let errors = [];
@@ -206,10 +197,37 @@ describe("Parser recovery", function() {
         }
         expect(errors).toEqual([{ span: span(0, 5, 0, 11), message: "expecting token =, < or IS" }]);
         expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 28), [
-            Builder.BadMatch(span(0, 0, 0, 11),
+            Builder.BadOperatorMatch(span(0, 0, 0, 11),
                 Builder.Ident(span(0, 0, 0, 4), "desc")),
-            Builder.IsNullMatch(span(0, 16, 0, 28),
-                Builder.Ident(span(0, 16, 0, 20), "desc"))
+            Builder.Match(span(0, 16, 0, 28),
+                Builder.Ident(span(0, 16, 0, 20), "desc"),
+                Builder.Operator(span(0, 21, 0, 23), OperatorKind.IS),
+                Builder.NullValue(span(0, 24, 0, 28)))
+        ]));
+    });
+
+    it("recover from bad value", function() {
+        // On missing value, skip to next token which can follow Unitary and return BadValue (Panic Mode)
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc = AND desc IS NULL";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        let result = null;
+        try {
+            result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 7, 0, 10), message: "expecting <STRING>, NULL or NOW" }]);
+        expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 23), [
+            Builder.BadValueMatch(span(0, 0, 0, 6),
+                Builder.Ident(span(0, 0, 0, 4), "desc"),
+                Builder.Operator(span(0, 5, 0, 6), OperatorKind.EQUALS)),
+            Builder.Match(span(0, 11, 0, 23),
+                Builder.Ident(span(0, 11, 0, 15), "desc"),
+                Builder.Operator(span(0, 16, 0, 18), OperatorKind.IS),
+                Builder.NullValue(span(0, 19, 0, 23)))
         ]));
     });
 
@@ -227,7 +245,7 @@ describe("Parser recovery", function() {
         } catch (e) {
         }
         expect(errors).toEqual([{ span: span(0, 0, 0, 1), message: "expecting token IDENT" }]);
-        expect(result).toEqual(Builder.BadUnitary(span(0, 0, 0, 8)));
+        expect(result).toEqual(Builder.BadMatch(span(0, 0, 0, 8)));
     });
 
     it("recover from missing AND", function() {
@@ -245,11 +263,14 @@ describe("Parser recovery", function() {
         }
         expect(errors).toEqual([{ span: span(0, 14, 0, 18), message: "expecting token AND" }]);
         expect(result).toEqual(Builder.AndQuery(span(0, 0, 0, 26), [
-            Builder.EqualsMatch(span(0, 0, 0, 13),
+            Builder.Match(span(0, 0, 0, 13),
                 Builder.Ident(span(0, 0, 0, 4), "desc"),
+                Builder.Operator(span(0, 5, 0, 6), OperatorKind.EQUALS),
                 Builder.StringValue(span(0, 7, 0, 13), "tutu")),
-            Builder.IsNullMatch(span(0, 14, 0, 26),
-                Builder.Ident(span(0, 14, 0, 18), "desc"))
+            Builder.Match(span(0, 14, 0, 26),
+                Builder.Ident(span(0, 14, 0, 18), "desc"),
+                Builder.Operator(span(0, 19, 0, 21), OperatorKind.IS),
+                Builder.NullValue(span(0, 22, 0, 26)))
         ]));
     });
 
@@ -267,8 +288,9 @@ describe("Parser recovery", function() {
         }
         expect(errors).toEqual([{ span: span(0, 13, 0, 14), message: "expecting token EOF" }]);
         expect(result).toEqual(
-            Builder.EqualsMatch(span(0, 0, 0, 13),
+            Builder.Match(span(0, 0, 0, 13),
                 Builder.Ident(span(0, 0, 0, 4), "desc"),
+                Builder.Operator(span(0, 5, 0, 6), OperatorKind.EQUALS),
                 Builder.StringValue(span(0, 7, 0, 13), "tutu")));
     });
 
@@ -291,8 +313,9 @@ describe("Parser recovery", function() {
             { span: span(0, 15, 0, 16), message: "expecting token EOF" }]);
         expect(result).toEqual(
             Builder.GroupQuery(span(0, 0, 0, 14),
-                Builder.EqualsMatch(span(0, 1, 0, 14),
+                Builder.Match(span(0, 1, 0, 14),
                     Builder.Ident(span(0, 1, 0, 5), "desc"),
+                    Builder.Operator(span(0, 6, 0, 7), OperatorKind.EQUALS),
                     Builder.StringValue(span(0, 8, 0, 14), "tutu"))));
     });
 });
