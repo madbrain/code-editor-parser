@@ -288,29 +288,41 @@ export class Parser {
             let endSpan = end != null ? end.span : query.span;
             return ast.Builder.GroupQuery(mergeSpan([start, endSpan]), query);
         }
-        return this.recoverWith([TokenType.AND, TokenType.OR, TokenType.RPAR, TokenType.EOF], (span) => {
-            return ast.Builder.BadUnitary(mergeSpan([start, span ]));
+        const syncTokens = [TokenType.AND, TokenType.OR, TokenType.RPAR, TokenType.EOF];
+        return this.recoverWith(syncTokens, start, (span) => {
+            return ast.Builder.BadMatch(mergeSpan([start, span ]));
         }, () => {
             let ident = this.parseIdent();
-            return this.recoverWith([TokenType.AND, TokenType.OR, TokenType.RPAR, TokenType.EOF], (span) => {
-                return ast.Builder.BadMatch(mergeSpan([start, span ]), ident);
+            return this.recoverWith(syncTokens, start, (span) => {
+                return ast.Builder.BadOperatorMatch(mergeSpan([start, span ]), ident);
             }, () => {
-                if (this.testAndSkip(TokenType.EQUALS)) {
+                let operator = this.parseOperator();
+                return this.recoverWith(syncTokens, operator.span, (span) => {
+                    return ast.Builder.BadValueMatch(mergeSpan([start, span]), ident, operator);
+                }, () => {
                     let value = this.parseValue();
-                    return ast.Builder.EqualsMatch(this.nodesSpan([ident, value]), ident, value);
-                }
-                if (this.testAndSkip(TokenType.LOWER)) {
-                    let t = this.expect(TokenType.NOW);
-                    return ast.Builder.BeforeTodayMatch(mergeSpan([ident.span, t.span]), ident);
-                }
-                if (this.testAndSkip(TokenType.IS)) {
-                    let t = this.expect(TokenType.NULL);
-                    return ast.Builder.IsNullMatch(mergeSpan([ident.span, t.span]), ident);
-                }
-                this.report("expecting token =, < or IS");
+                    return ast.Builder.Match(this.nodesSpan([ident, value]), ident, operator, value);
+                });
             });
         });
         
+    }
+
+    /**
+     * Operator ::= EQUALS | IS | LOWER
+     */
+    private parseOperator(): ast.Operator {
+        let span = this.token.span;
+        if (this.testAndSkip(TokenType.EQUALS)) {
+            return ast.Builder.Operator(span, ast.OperatorKind.EQUALS);
+        }
+        if (this.testAndSkip(TokenType.LOWER)) {
+            return ast.Builder.Operator(span, ast.OperatorKind.LOWER);
+        }
+        if (this.testAndSkip(TokenType.IS)) {
+            return ast.Builder.Operator(span, ast.OperatorKind.IS);
+        }
+        this.report("expecting token =, < or IS");
     }
 
     /**
@@ -323,12 +335,22 @@ export class Parser {
     }
 
     /**
-     * Value ::= STRING_LITERAL
+     * Value ::= STRING_LITERAL | NOW | NULL
      * Follow(Value) = Follow(Unitary) = { AND, OR, RPAR, EOF }
      */
     private parseValue(): ast.Value {
-        let t = this.expect(TokenType.STRING_LITERAL);
-        return ast.Builder.StringValue(t.span, t.value);
+        let span = this.token.span;
+        if (this.testAndSkip(TokenType.NULL)) {
+            return ast.Builder.NullValue(span);
+        }
+        if (this.testAndSkip(TokenType.NOW)) {
+            return ast.Builder.NowValue(span);
+        }
+        if (this.token.type == TokenType.STRING_LITERAL) {
+            let t = this.nextToken();
+            return ast.Builder.StringValue(t.span, t.value);
+        }
+        this.report("expecting <STRING>, NULL or NOW");
     }
 
     private testAndSkip(type: TokenType): boolean {
@@ -344,8 +366,7 @@ export class Parser {
     }
 
 
-    private recoverWith<T>(syncTokens: TokenType[], makeError: (Span) => T, parseFunc: () => T): T {
-        let start = { from: this.token.span.from, to: this.token.span.from };
+    private recoverWith<T>(syncTokens: TokenType[], start: Span, makeError: (Span) => T, parseFunc: () => T): T {
         try {
             return parseFunc();
         } catch(e) {
@@ -369,9 +390,7 @@ export class Parser {
             this.reportExpect(type, doThrow);
             return null;
         } else {
-            let t = this.token;
-            this.nextToken();
-            return t;
+            return this.nextToken();
         }
     }
 
@@ -389,8 +408,10 @@ export class Parser {
         }
     }
 
-    private nextToken() {
+    private nextToken(): Token {
+        let t = this.token;
         this.token = this.lexer.nextToken();
+        return t;
     }
 
     private nodesSpan(nodes: ast.AstNode[]) {
