@@ -4,6 +4,7 @@ import "codemirror/addon/lint/lint";
 import "codemirror/addon/hint/show-hint";
 
 import {IErrorReporter, Parser, Lexer} from "./analyse";
+import {CompletionProcessor} from "./complete";
 
 export function main() {
 
@@ -41,20 +42,19 @@ export function main() {
             setTimeout(function() {
                 var cursor = cm.getCursor();
                 var query = parse(cm.getValue(), () => {});
-                // TODO find cursor in query => determine completion state
-                let comp = [ "Hello", "World" ];
-                let start = cursor.ch;
-                let end = cursor.ch + 1;
+                let params = [ "desc", "dext" ]
+                let processor = new CompletionProcessor(params);
+                let result = processor.complete(query, { line: cursor.line, column: cursor.ch});
                 return accept({
-                    list: comp,
-                    from: CodeMirror.Pos(cursor.line, start),
-                    to: CodeMirror.Pos(cursor.line, end)});
+                    list: result.elements,
+                    from: CodeMirror.Pos(cursor.line, result.span.from.column),
+                    to: CodeMirror.Pos(cursor.line, result.span.to.column)});
             }, 100)
         })
     };
 
     var myCodeMirror = CodeMirror(document.getElementById("main"), {
-        value: "(desc = 'tutu' OR status IS NULL) AND date < NOW\n",
+        value: "", // (desc = 'tutu' OR status IS NULL) AND date < NOW\n",
         mode: "custom",
         lint: lintOptions,
         extraKeys: {

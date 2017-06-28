@@ -8,11 +8,16 @@ System.config({
     "codemirror": {
       "defaultExtension": "js",
       "main": "lib/codemirror.js"
+    },
+    "lodash": {
+      "defaultExtension": "js",
+      "main": "lodash.js"
     }
   },
   map: {
     "app": "tmp",
-    "codemirror": "npm:codemirror"
+    "codemirror": "npm:codemirror",
+    "lodash": "npm:lodash"
   },
   paths: {
     "npm:": "node_modules/"

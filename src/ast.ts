@@ -1,12 +1,19 @@
 
 import {Span} from "./analyse";
 
+export enum OperatorKind {
+    EQUALS, LOWER, IS 
+}
+
 export interface AstNode {
     type: string;
     span: Span;
 }
 export interface Ident extends AstNode {
     name: string;
+}
+export interface Operator extends AstNode {
+    kind: OperatorKind;
 }
 export interface Value extends AstNode {}
 export interface StringValue extends AstNode {
@@ -16,6 +23,10 @@ export interface StringValue extends AstNode {
 export interface Query extends AstNode {}
 
 export interface ErrorNode extends AstNode {}
+
+export interface BadMatch extends ErrorNode {
+    ident: Ident;
+}
 
 export class Builder {
     public static GroupQuery(span: Span, query: Query) {
@@ -38,23 +49,31 @@ export class Builder {
         return {type: "string-value", span: span, content: content};        
     }
 
-    public static EqualsMatch(span: Span, ident: Ident, value: Value) {
-        return {type: "equals-match", span: span, ident: ident, value: value};
+    public static NullValue(span: Span) {
+        return {type: "null-value", span: span};        
     }
 
-    public static IsNullMatch(span: Span, ident: Ident) {
-        return {type:"is-null-match", span: span, ident: ident};
+    public static NowValue(span: Span) {
+        return {type: "now-value", span: span};        
     }
 
-    public static BeforeTodayMatch(span: Span, ident: Ident) {
-        return {type: "before-today-match", span: span, ident: ident};
+    public static Match(span: Span, ident: Ident, operator: Operator, value: Value) {
+        return {type: "match", span: span, ident: ident, operator: operator, value: value};
     }
 
-    public static BadMatch(span: Span, ident: Ident) {
-        return {type: "bad-match", span: span, ident: ident};
+    public static Operator(span: Span, kind: OperatorKind) {
+        return {type: "operator", span: span, kind: kind};
     }
 
-    public static BadUnitary(span: Span) {
-        return {type: "bad-unitary", span: span };
+      public static BadMatch(span: Span) {
+        return {type: "bad-match", span: span };
+    }
+
+    public static BadOperatorMatch(span: Span, ident: Ident) {
+        return {type: "bad-operator-match", span: span, ident: ident};
+    }
+
+    public static BadValueMatch(span: Span, ident: Ident, operator: Operator) {
+        return {type: "bad-value-match", span: span, ident: ident, operator: operator };
     } 
 };
