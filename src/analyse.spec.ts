@@ -131,6 +131,21 @@ describe("Parser", function() {
         expect(errors).toEqual([{ span: span(0, 14, 0, 15), message: "expecting token EOF" }]);
     });
 
+    it("report empty span error on previous token", function() {
+        let errors = [];
+        let reporter = (span, message) => {
+            errors.push({span: span, message: message});
+        }
+        let content = "desc = 'x' AND";
+        let parser = new Parser(new Lexer(content, reporter), reporter);
+        
+        try {
+            let result = parser.parseQuery();
+        } catch (e) {
+        }
+        expect(errors).toEqual([{ span: span(0, 11, 0, 14), message: "expecting token IDENT" }]);
+    });
+
     it("report error at missing end parenthesis", function() {
         let errors = [];
         let reporter = (span, message) => {
@@ -143,7 +158,7 @@ describe("Parser", function() {
             let result = parser.parseQuery();
         } catch (e) {
         }
-        expect(errors).toEqual([{ span: span(0, 14, 0, 14), message: "expecting token RPAR" }]);
+        expect(errors).toEqual([{ span: span(0, 8, 0, 14), message: "expecting token RPAR" }]);
     });
 
     it("report error on bad match", function() {
@@ -177,7 +192,7 @@ describe("Parser recovery", function() {
             result = parser.parseQuery();
         } catch (e) {
         }
-        expect(errors).toEqual([{ span: span(0, 5, 0, 5), message: "expecting token =, < or IS" }]);
+        expect(errors).toEqual([{ span: span(0, 0, 0, 4), message: "expecting token =, < or IS" }]);
         expect(result).toEqual(Builder.BadOperatorMatch(span(0, 0, 0, 4),
                 Builder.Ident(span(0, 0, 0, 4), "desc")));
     });

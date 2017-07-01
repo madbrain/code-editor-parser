@@ -1,7 +1,7 @@
 
 import * as _ from "lodash";
 import {Position, Span} from './analyse';
-import {Query, Ident, Match, BadOperatorMatch, BadValueMatch} from './ast';
+import {Query, CompositeQuery, GroupQuery, Ident, Match, BadOperatorMatch, BadValueMatch} from './ast';
 
 export interface Completion {
     span: Span;
@@ -43,14 +43,26 @@ export class CompletionProcessor {
 
     private findAction(query: Query, position: Position): Action {
         if (isBefore(position, query.span.from)) {
-            return new CompleteName(this.params, { from: position, to: position})
+            return this.completeParamNames(position);
         } else if (isIn(position, query.span)) {
             if (query.type == "bad-operator-match") {
                 return this.findActionInBadOperatorMatch(<BadOperatorMatch>query, position);
+             } else if (query.type == "bad-value-match") {
+                return this.findActionInBadValueMatch(<BadValueMatch>query, position);
             } else if (query.type == "match") {
                 return this.findActionInMatch(<Match>query, position);
             } else if (query.type == "bad-match") {
-                return new CompleteName(this.params, { from: position, to: position});
+                return this.completeParamNames(position);
+            } else if (query.type == "and-query" || query.type == "or-query") {
+                let compositeQuery = <CompositeQuery>query;
+                for (var i = 0; i < compositeQuery.elements.length; i++) {
+                    if (isIn(position, compositeQuery.elements[i].span)) {
+                        return this.findAction(compositeQuery.elements[i], position);
+                    }
+                }
+                return this.completeParamNames(position);
+            } else if (query.type == "group-query") {
+                return this.findAction((<GroupQuery>query).query, position);
             } else {
                 throw Error("unknown query type: " + query.type);
             }
@@ -60,23 +72,38 @@ export class CompletionProcessor {
             } else if (query.type == "bad-match") {
                 return new CompleteName(this.params, { from: position, to: position});
             } else if (query.type == "bad-value-match") {
-                return new CompleteValue(/*<BadValueMatch>query*/ null, { from: position, to: position});
+                return new CompleteValue(/*(<BadValueMatch>query).ident*/ null, { from: position, to: position});
             } else if (query.type == "match") {
                 return new CompleteName([ "AND", "OR" ], { from: position, to: position});
+             } else if (query.type == "and-query" || query.type == "or-query") {
+                let compositeQuery = <CompositeQuery>query;
+                let last = compositeQuery.elements[compositeQuery.elements.length-1];
+                return this.findAction(last, position);
+            } else if (query.type == "group-query") {
+                let group = <GroupQuery>query;
+                return this.findAction((<GroupQuery>query).query, position);
             } else {
                 throw Error("unknown query type: " + query.type);
             }
         }
     }
 
+    private completeParamNames(position: Position) {
+        return new CompleteName(this.params, { from: position, to: position})
+    }
+
+    private completeParamNamesIn(position: Position, ident:  Ident) {
+        let prefix = this.findPrefix(ident, position);
+        return new CompleteName(this.params.filter(p => p.slice(0, prefix.length) == prefix), ident.span);
+    }
+
     private findActionInMatch(query: Match, position: Position): Action {
         let ident = query.ident;
         let value = query.value;
         if (isIn(position, ident.span)) {
-            let prefix = this.findPrefix(ident, position);
-            return new CompleteName(this.params.filter(p => p.slice(0, prefix.length) == prefix), ident.span);
+            return this.completeParamNamesIn(position, ident);
         } else if (isIn(position, value.span)) {
-            return new CompleteValue(null, value.span);
+            return new CompleteValue(/*query.ident*/ null, value.span);
         } else if (isIn(position, query.operator.span)) {
             return new CompleteName([ "<", "IS", "=" ], query.operator.span);
         }
@@ -85,10 +112,20 @@ export class CompletionProcessor {
     private findActionInBadOperatorMatch(query: BadOperatorMatch, position: Position): Action {
         let ident = query.ident;
         if (isIn(position, ident.span)) {
-            let prefix = this.findPrefix(ident, position);
-            return new CompleteName(this.params.filter(p => p.slice(0, prefix.length) == prefix), ident.span);
+            return this.completeParamNamesIn(position, ident);
         } else if (isAfter(position, ident.span.to)) {
             return new CompleteName([ "<", "IS", "=" ], {from: position, to:position});
+        }
+    }
+
+    private findActionInBadValueMatch(query: BadValueMatch, position: Position): Action {
+        let ident = query.ident;
+        if (isIn(position, ident.span)) {
+            return this.completeParamNamesIn(position, ident);
+        } else if (isIn(position, query.operator.span)) {
+            return new CompleteName([ "<", "IS", "=" ], query.operator.span);
+        } else if (isAfter(position, query.operator.span.to)) {
+            return new CompleteValue(/*query.ident*/ null, {from: position, to:position});
         }
     }
 

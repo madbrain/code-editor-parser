@@ -22,10 +22,32 @@ export interface StringValue extends AstNode {
 
 export interface Query extends AstNode {}
 
+export interface CompositeQuery extends Query {
+    elements: Query[];
+}
+
+export interface GroupQuery extends Query {
+    query: Query;
+}
+
+export interface Match extends Query {
+    ident: Ident;
+    operator: Operator;
+    value: Value;
+}
+
 export interface ErrorNode extends AstNode {}
 
 export interface BadMatch extends ErrorNode {
     ident: Ident;
+}
+
+export interface BadOperatorMatch extends BadMatch {
+
+}
+
+export interface BadValueMatch extends BadMatch {
+    operator: Operator;
 }
 
 export class Builder {

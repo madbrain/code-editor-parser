@@ -224,6 +224,7 @@ import * as ast from "./ast";
 
 export class Parser {
     private token: Token;
+    private lastSpan: Span = null;
 
     constructor(private lexer: Lexer, private reporter: IErrorReporter) {}
 
@@ -400,16 +401,25 @@ export class Parser {
     }
 
     private report(msg: string, doThrow: boolean = true) {
-        this.reporter(this.token.span, msg);
+        let span = this.token.span;
+        if (span.from.line == span.to.line
+                && span.from.column == span.to.column
+                && this.lastSpan != null) {
+            span = this.lastSpan;
+        }
+        this.reporter(span, msg);
         if (doThrow) {
             throw new Error(msg
-                + " at line " + this.token.span.from.line
-                + " column " + this.token.span.from.column);
+                + " at line " + span.from.line
+                + " column " + span.from.column);
         }
     }
 
     private nextToken(): Token {
         let t = this.token;
+        if (t != null) {
+            this.lastSpan = t.span;
+        }
         this.token = this.lexer.nextToken();
         return t;
     }
