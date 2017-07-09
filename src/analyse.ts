@@ -100,7 +100,7 @@ export class Lexer {
             if (c == '<') {
                 return this.token(TokenType.LOWER);
             }
-            if (c == '\'') {
+            if (c == '\'' || c == '\"') {
                 return this.stringLiteral(c);
             }
             if (this.isLetter(c)) {

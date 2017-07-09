@@ -22,31 +22,27 @@ export interface StringValue extends AstNode {
 
 export interface Query extends AstNode {}
 
-export interface CompositeQuery extends Query {
-    elements: Query[];
-}
-
-export interface GroupQuery extends Query {
-    query: Query;
-}
-
 export interface Match extends Query {
     ident: Ident;
     operator: Operator;
     value: Value;
 }
 
+export interface GroupQuery extends Query {
+    query: Query;
+}
+export interface CompositeQuery extends Query {
+    elements: Query[];
+}
+
 export interface ErrorNode extends AstNode {}
 
-export interface BadMatch extends ErrorNode {
+export interface BadOperatorMatch extends ErrorNode {
     ident: Ident;
 }
 
-export interface BadOperatorMatch extends BadMatch {
-
-}
-
-export interface BadValueMatch extends BadMatch {
+export interface BadValueMatch extends ErrorNode {
+    ident: Ident;
     operator: Operator;
 }
 
