@@ -27,6 +27,12 @@ export interface Match extends Query {
     operator: Operator;
     value: Value;
 }
+export interface GroupQuery extends Query {
+    query: Query;
+}
+export interface CompositeQuery extends Query {
+    elements: Query[];
+}
 
 export interface ErrorNode extends AstNode {}
 
