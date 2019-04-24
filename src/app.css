@@ -1,3 +1,8 @@
+
+#main {
+    border: 1px solid black;
+}
+
 .CodeMirror-lint-mark-date {
     padding: 0.25em 0.35em;
     margin: 0px 0.25em;

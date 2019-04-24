@@ -46,9 +46,7 @@ class CompleteBooleanOperator implements Action {
     constructor(public span: Span) {}
 
     public makeCompletion() {
-        return new Promise((accept) => {
-            accept({span: this.span, elements: addTrailingSpace(["AND", "OR"]) });
-        });
+        return Promise.resolve({span: this.span, elements: addTrailingSpace(["AND", "OR"]) });
     }
 }
 

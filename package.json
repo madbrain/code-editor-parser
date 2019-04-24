@@ -3,27 +3,23 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "parcel src/index.html",
+    "build": "parcel build src/index.html",
+    "test": "jest"
   },
-  "author": "",
+  "author": "Ludovic L'Hours",
   "license": "ISC",
   "devDependencies": {
-    "@types/codemirror": "0.0.40",
-    "@types/jasmine": "2.5.52",
-    "browser-sync": "2.18.12",
-    "gulp": "3.9.1",
-    "gulp-clean": "0.3.2",
-    "gulp-jasmine": "2.4.2",
-    "gulp-sourcemaps": "2.6.0",
-    "gulp-typescript": "3.1.7",
-    "gulp-util": "3.0.8",
-    "run-sequence": "1.2.2",
-    "typescript": "2.3.4"
+    "@types/codemirror": "0.0.74",
+    "@types/jest": "^24.0.11",
+    "@types/lodash": "^4.14.123",
+    "jest": "^24.7.1",
+    "parcel-bundler": "^1.12.3",
+    "ts-jest": "^24.0.2",
+    "typescript": "^3.4.5"
   },
   "dependencies": {
-    "codemirror": "5.26.0",
-    "jquery": "3.2.1",
-    "lodash": "4.17.4",
-    "systemjs": "0.20.14"
+    "codemirror": "5.46.0",
+    "lodash": "^4.17.11"
   }
 }
