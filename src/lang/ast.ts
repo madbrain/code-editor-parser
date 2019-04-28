@@ -83,7 +83,7 @@ export class Builder {
         return {type: "operator", span: span, kind: kind};
     }
 
-      public static BadMatch(span: Span) {
+    public static BadMatch(span: Span) {
         return {type: "bad-match", span: span };
     }
 

@@ -1,4 +1,3 @@
-
 import CodeMirror from "codemirror";
 import "codemirror/addon/lint/lint";
 import "codemirror/addon/hint/show-hint";
@@ -6,11 +5,12 @@ import "codemirror/theme/eclipse.css";
 import "codemirror/addon/lint/lint.css";
 import "codemirror/addon/hint/show-hint.css";
 import "codemirror/lib/codemirror.css";
-import "./app.css";
+import "./codemirror-date.css";
 
-import { IErrorReporter, Parser, Lexer } from "./analyse";
-import { Query, CompositeQuery, GroupQuery, OperatorKind, Match } from './ast';
-import { CompletionProcessor, CompletionHelper } from "./complete";
+import { IErrorReporter, Parser, Lexer } from "../lang/analyse";
+import { Query, CompositeQuery, GroupQuery, OperatorKind, Match, BadValueMatch, BadOperatorMatch, Value, StringValue } from '../lang/ast';
+import { CompletionProcessor, CompletionHelper } from "../lang/complete";
+import store from "./store";
 
 const ExampleParameters = [
     { name: "birthday", type: "date", values: null },
@@ -20,16 +20,19 @@ const ExampleParameters = [
 ];
 
 function parse(content: string, reporter: IErrorReporter) {
-    let parser = new Parser(new Lexer(content, reporter), reporter);
+    const parser = new Parser(new Lexer(content, reporter), reporter);
     try {
-        let result = parser.parseQuery();
-        console.log(result);
-        return result;
+        return parser.parseQuery();
     } catch (e) {
         console.log(e);
     }
 }
 
+/**
+ * Process query to find and create special marker for date
+ * 
+ * @param query 
+ */
 function findDate(query: Query) {
     if (query.type == "match") {
         const match = <Match>query;
@@ -63,6 +66,91 @@ function findDate(query: Query) {
     }
 }
 
+/**
+ * Transform Query Ast to tree
+ * @param query
+ */
+function toTree(query: Query) {
+    if (query.type == "match") {
+        const match = <Match>query;
+        return {
+            label: query.type,
+            span: query.span,
+            children: [
+                { label: `ident: ${match.ident.name}`, span: match.ident.span, children: [] },
+                { label: `operator: ${match.operator.kind}`, span: match.operator.span, children: [] },
+                valueToTree(match.value)
+            ]
+        };
+    } else if (query.type == "and-query" || query.type == "or-query") {
+        const compositeQuery = <CompositeQuery>query;
+        return {
+            label: query.type,
+            span: query.span,
+            children: compositeQuery.elements.map(toTree)
+        };
+    } else if (query.type == "group-query") {
+        const groupQuery = <GroupQuery>query;
+        return {
+            label: query.type,
+            span: query.span,
+            children: [ toTree(groupQuery.query) ]
+        };
+    } else if (query.type == "bad-match") {
+        return {
+            label: query.type,
+            span: query.span,
+            children: [
+                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
+            ]
+        };
+    } else if (query.type == "bad-operator-match") {
+        const bad = <BadOperatorMatch>query;
+        return {
+            label: query.type,
+            span: query.span,
+            children: [
+                { label: `ident: ${bad.ident.name}`, span: bad.ident.span, children: [] },
+                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
+            ]
+        };
+    } else if (query.type == "bad-value-match") {
+        const bad = <BadValueMatch>query;
+        return {
+            label: query.type,
+            span: query.span,
+            children: [
+                { label: `ident: ${bad.ident.name}`, span: bad.ident.span, children: [] },
+                { label: `operator: ${bad.operator.kind}`, span: bad.operator.span, children: [] },
+                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
+            ]
+        };
+    } else {
+        return {
+            label: JSON.stringify(query),
+            span: query.span,
+            children: []
+        };
+    }
+}
+
+function valueToTree(value: Value) {
+    if (value.type == "string-value") {
+        const strValue = <StringValue>value;
+        return {
+            label: `value: "${strValue.content}"`,
+            span: value.span,
+            children: []
+        };
+    } else {
+        return {
+            label: `value: ${value.type}`,
+            span: value.span,
+            children: []
+        };
+    }
+}
+
 const lintOptions: CodeMirror.LintOptions = {
     async: false,
     hasGutters: false,
@@ -77,11 +165,12 @@ const lintOptions: CodeMirror.LintOptions = {
             });
         };
         let result = parse(content, reporter);
+        store.set({ ast: toTree(result) });
         return errors.concat(findDate(result));
     }
 };
 
-class MyHelper implements CompletionHelper {
+class LanguageHelper implements CompletionHelper {
     completeName(prefix: string): Promise<Array<String>> {
         return new Promise((accept) => {
             const values = ExampleParameters.map(param => param.name);
@@ -131,7 +220,7 @@ function hint(cm: CodeMirror.Doc, option: CodeMirror.ShowHintOptions) {
         setTimeout(() => {
             const cursor = cm.getCursor();
             const query = parse(cm.getValue(), () => { });
-            const processor = new CompletionProcessor(new MyHelper());
+            const processor = new CompletionProcessor(new LanguageHelper());
             processor.complete(query, { line: cursor.line, column: cursor.ch }).then((result) => {
                 return accept({
                     list: result.elements,
@@ -143,18 +232,11 @@ function hint(cm: CodeMirror.Doc, option: CodeMirror.ShowHintOptions) {
     });
 };
 
-var myCodeMirror = CodeMirror(document.getElementById("main"), {
+export default {
     value: "(desc = 'tutu' OR status IS NULL) AND date < NOW\n",
     mode: "custom",
     lint: lintOptions,
     extraKeys: {
         "Ctrl-Space": cm => { CodeMirror.commands.autocomplete(cm, hint, { completeSingle: false }); }
     },
-});
-
-// myCodeMirror.on("keyup", (cm: CodeMirror.Editor, event) => {
-//     if (!cm.state.completionActive && /* Enables keyboard navigation in autocomplete list */
-//         event.keyCode != 13) {        /* Enter - do not open autocomplete list just after item has been selected in it */ 
-//         CodeMirror.commands.autocomplete(cm, hint, {completeSingle: false});
-//     }
-// });
+};
