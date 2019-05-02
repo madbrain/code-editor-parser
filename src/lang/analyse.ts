@@ -36,7 +36,7 @@ const KEYWORDS = {
     "NOW": TokenType.NOW
 };
 
-function mergeSpan(spans: Span[]): Span {
+export function mergeSpan(spans: Span[]): Span {
     function minPosition(a: Position, b: Position): Position {
         if (a.line < b.line) {
             return a;
@@ -67,9 +67,13 @@ function mergeSpan(spans: Span[]): Span {
         }
     })
     return span;
-} 
+}
 
-export class Lexer {
+export interface ILexer {
+    nextToken(): Token;
+}
+
+export class Lexer implements ILexer {
     private position = 0;
     private line = 0;
     private column = 0;
@@ -226,7 +230,7 @@ export class Parser {
     private token: Token;
     private lastSpan: Span = null;
 
-    constructor(private lexer: Lexer, private reporter: IErrorReporter) {}
+    constructor(private lexer: ILexer, private reporter: IErrorReporter) {}
 
     public parseQuery(): ast.Query {
         this.nextToken();

@@ -1,8 +1,8 @@
 import { Store } from 'svelte/store';
 
-const ast = {
+const emptyTree = {
     label: "",
     children: [ ]
 };
 
-export default new Store( { ast: ast, selection: null });
+export default new Store( { ast: emptyTree, tokens: emptyTree, selection: null });

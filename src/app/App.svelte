@@ -4,7 +4,12 @@
     </div>
     <div class="tree-column full-height">
         <div>
-            <Tree tree="{$ast}" />
+            <div class="header">
+                <Switch on:change="set({ modeAST: event.value })" leftLabel="Tokens" rightLabel="AST"/>
+            </div>
+            <div class="tree">
+                <Tree tree="{modeAST ? $ast : $tokens}" />
+            </div>
         </div>
     </div>
 </div>
@@ -32,11 +37,17 @@
     flex: 75%;
 }
 
+.header {
+    font-family: Arial, Helvetica, sans-serif;
+    border-bottom: 1px solid black;
+    padding: 10px;
+}
+
 .tree-column {
     flex: 25%;
 }
 
-.tree-column div {
+.tree {
     padding: 5px;
 }
 </style>
@@ -44,10 +55,11 @@
 <script>
     import Editor from "./Editor.svelte";
     import Tree from "./Tree.svelte";
+    import Switch from "./Switch.svelte";
     import editorOptions from "./editor.service";
 
     export default {
-        components: { Editor, Tree },
+        components: { Editor, Tree, Switch },
         
         oncreate() {
             this.store.on('state', ({ current, changed, previous }) => {
@@ -63,7 +75,8 @@
         data() {
             return {
                 editorOptions: editorOptions,
-                selection: null
+                selection: null,
+                modeAST: false
             }
         }
     }

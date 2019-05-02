@@ -7,8 +7,8 @@ import "codemirror/addon/hint/show-hint.css";
 import "codemirror/lib/codemirror.css";
 import "./codemirror-date.css";
 
-import { IErrorReporter, Parser, Lexer } from "../lang/analyse";
-import { Query, CompositeQuery, GroupQuery, OperatorKind, Match, BadValueMatch, BadOperatorMatch, Value, StringValue } from '../lang/ast';
+import { IErrorReporter, Parser, ILexer, Lexer, mergeSpan, Token, TokenType } from "../lang/analyse";
+import { AstNode, Query, CompositeQuery, GroupQuery, OperatorKind, Match, BadValueMatch, BadOperatorMatch, Value, StringValue } from '../lang/ast';
 import { CompletionProcessor, CompletionHelper } from "../lang/complete";
 import store from "./store";
 
@@ -19,10 +19,25 @@ const ExampleParameters = [
     { name: "code", type: "string", values: ["X1-", "XX-", "Y1-"] },
 ];
 
+class LexerDecorator implements ILexer {
+    tokens: Array<Token> = []
+    constructor (private lexer: ILexer) { }
+    nextToken(): Token {
+        const token = this.lexer.nextToken();
+        this.tokens.push(token);
+        return token;
+    }
+}
+
 function parse(content: string, reporter: IErrorReporter) {
-    const parser = new Parser(new Lexer(content, reporter), reporter);
+    const lexer = new LexerDecorator(new Lexer(content, reporter))
+    const parser = new Parser(lexer, reporter);
     try {
-        return parser.parseQuery();
+        const ast = parser.parseQuery();
+        return {
+            tokens: lexer.tokens,
+            ast: ast
+        };
     } catch (e) {
         console.log(e);
     }
@@ -67,87 +82,60 @@ function findDate(query: Query) {
 }
 
 /**
- * Transform Query Ast to tree
- * @param query
+ * Transform Ast to tree
+ * @param ast
  */
-function toTree(query: Query) {
-    if (query.type == "match") {
-        const match = <Match>query;
+function astToTree(ast: AstNode) {
+    const fields = Object.keys(ast)
+        .filter(name => name != "type" && name != "span")
+        .map(name => {
+            const child = ast[name];
+            if (Array.isArray(child)) {
+                const children = child.map(astToTree);
+                // TODO list should be a node and have span
+                return {
+                    label: name + ": ",
+                    span: mergeSpan(children.map(x => x.span)), 
+                    children: children
+                };
+            }
+            if (typeof child != "object") {
+                return {
+                    label: name + ": " + child,
+                    span: ast.span, 
+                    children: []
+                };
+            }
+            const tree = astToTree(child);
+            return {
+                label: name + ": " + tree.label,
+                span: tree.span, 
+                children: tree.children
+            };
+        });
+    return {
+        label: ast.type,
+        span: ast.span, 
+        children: fields
+    };
+}
+
+function tokensToTree(tokens: Array<Token>) {
+    function tokenToTree(token: Token) {
+        let label = "" + TokenType[token.type];
+        if (token.value !== undefined) {
+            label += " (" + token.value + ")";
+        }
         return {
-            label: query.type,
-            span: query.span,
-            children: [
-                { label: `ident: ${match.ident.name}`, span: match.ident.span, children: [] },
-                { label: `operator: ${match.operator.kind}`, span: match.operator.span, children: [] },
-                valueToTree(match.value)
-            ]
-        };
-    } else if (query.type == "and-query" || query.type == "or-query") {
-        const compositeQuery = <CompositeQuery>query;
-        return {
-            label: query.type,
-            span: query.span,
-            children: compositeQuery.elements.map(toTree)
-        };
-    } else if (query.type == "group-query") {
-        const groupQuery = <GroupQuery>query;
-        return {
-            label: query.type,
-            span: query.span,
-            children: [ toTree(groupQuery.query) ]
-        };
-    } else if (query.type == "bad-match") {
-        return {
-            label: query.type,
-            span: query.span,
-            children: [
-                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
-            ]
-        };
-    } else if (query.type == "bad-operator-match") {
-        const bad = <BadOperatorMatch>query;
-        return {
-            label: query.type,
-            span: query.span,
-            children: [
-                { label: `ident: ${bad.ident.name}`, span: bad.ident.span, children: [] },
-                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
-            ]
-        };
-    } else if (query.type == "bad-value-match") {
-        const bad = <BadValueMatch>query;
-        return {
-            label: query.type,
-            span: query.span,
-            children: [
-                { label: `ident: ${bad.ident.name}`, span: bad.ident.span, children: [] },
-                { label: `operator: ${bad.operator.kind}`, span: bad.operator.span, children: [] },
-                // TODO add bad tokens as a node { label: `value: ${bad.error}`, span: bad.error.span, children: [] }
-            ]
-        };
-    } else {
-        return {
-            label: JSON.stringify(query),
-            span: query.span,
+            label: label,
+            span: token.span, 
             children: []
         };
     }
-}
-
-function valueToTree(value: Value) {
-    if (value.type == "string-value") {
-        const strValue = <StringValue>value;
-        return {
-            label: `value: "${strValue.content}"`,
-            span: value.span,
-            children: []
-        };
-    } else {
-        return {
-            label: `value: ${value.type}`,
-            span: value.span,
-            children: []
-        };
+    return {
+        label: "tokens:",
+        span: mergeSpan(tokens.map(token => token.span)),
+        children: tokens.map(tokenToTree)
     }
 }
 
@@ -164,9 +152,9 @@ const lintOptions: CodeMirror.LintOptions = {
                 message: message
             });
         };
-        let result = parse(content, reporter);
-        store.set({ ast: toTree(result) });
-        return errors.concat(findDate(result));
+        let { ast, tokens } = parse(content, reporter);
+        store.set({ ast: astToTree(ast), tokens: tokensToTree(tokens) });
+        return errors.concat(findDate(ast));
     }
 };
 
@@ -219,9 +207,9 @@ function hint(cm: CodeMirror.Doc, option: CodeMirror.ShowHintOptions) {
     return new Promise((accept) => {
         setTimeout(() => {
             const cursor = cm.getCursor();
-            const query = parse(cm.getValue(), () => { });
+            const { ast } = parse(cm.getValue(), () => { });
             const processor = new CompletionProcessor(new LanguageHelper());
-            processor.complete(query, { line: cursor.line, column: cursor.ch }).then((result) => {
+            processor.complete(ast, { line: cursor.line, column: cursor.ch }).then((result) => {
                 return accept({
                     list: result.elements,
                     from: CodeMirror.Pos(cursor.line, result.span.from.column),
